@@ -1,2 +1,4 @@
+**/__pycache__
 *.tex
 *.docx
+experiment.py
