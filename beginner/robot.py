@@ -33,31 +33,34 @@ class Robot:
         # Initially, we just return a random action, but you should implement a planning algorithm
         # action = np.random.uniform(low=-constants.MAX_ACTION_MAGNITUDE, high=constants.MAX_ACTION_MAGNITUDE, size=2)
         # episode_done = False
+        # return action, episode_done
         import torch
         from torch.distributions.normal import Normal
 
         def eucl_reward(state):
             joint_pos = self.environment.get_joint_pos_from_state(state)
             hand_pos = joint_pos[2]
-            goal = torch.Tensor(self.environment.goal_state)
+            goal = np.array(self.environment.goal_state)
             diff = goal - hand_pos
-            return -torch.sqrt(torch.dot(diff, diff))
+            return -np.sqrt(np.dot(diff, diff))
         
         if eucl_reward(current_state) > -0.01:
             return np.zeros(2), True
         
         def path_reward(actions):
             state = current_state
+            tot_reward = 0
             for action in actions:
                 state = self.environment.dynamics(state, action.numpy())
-            return eucl_reward(state)
+                tot_reward += eucl_reward(state)
+            return tot_reward
         
         n_iter, n_paths, path_l, k_elite = 10, 20, 10, 5
         act_mean, act_std = torch.zeros(2), torch.ones(2)
         for _ in range(n_iter):
             policy = Normal(act_mean, act_std)
             all_actions = policy.sample(sample_shape=(n_paths, path_l))
-            all_rewards = torch.stack([path_reward(seq) for seq in all_actions])
+            all_rewards = torch.Tensor([path_reward(seq) for seq in all_actions])
             top_indices = all_rewards.topk(k_elite).indices
             elite = all_actions.index_select(0, top_indices)
             act_mean = elite.mean((0,1))

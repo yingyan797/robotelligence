@@ -11,7 +11,7 @@ import torch.optim as optim
 from matplotlib import pyplot as plt
 
 # Imports from this project
-import constants
+import constants, environment
 import config
 
 # Configure matplotlib for interactive mode
@@ -32,10 +32,15 @@ class Robot:
         self.robot_base_pos = np.array(constants.ROBOT_BASE_POS)
         # The goal state
         self.goal_state = 0
+        self.n_episodes = 0
+        self.eps_count = 0
+        self.inputs = []
+        self.outputs = []
+        self.dyn_model = None
 
     # Reset the robot at the start of an episode
     def reset(self):
-        pass
+        self.eps_count = 0
 
     # Give the robot access to the goal state
     def set_goal_state(self, goal_state):
@@ -44,14 +49,52 @@ class Robot:
     # Function to get the next action in the plan
     def select_action(self, state):
         # For now, a random action
-        action = np.random.uniform(low=-constants.MAX_ACTION_MAGNITUDE, high=constants.MAX_ACTION_MAGNITUDE, size=2)
-        episode_done = False
-        return action, episode_done
+        if self.n_episodes < 100:
+            action = np.random.uniform(low=-constants.MAX_ACTION_MAGNITUDE, high=constants.MAX_ACTION_MAGNITUDE, size=2)
+            if self.eps_count == 5:
+                self.n_episodes += 1
+                return action, True
+            self.eps_count += 1
+            return action, False
+        elif len(self.inputs) == 100:
+            print("start training")
+            xs = torch.stack(self.inputs, 0)
+            ys = torch.stack(self.outputs, 0)
+            model = nn.Sequential(
+                nn.Linear(4, 32, bias=True), nn.ReLU(True),
+                nn.Linear(32, 16, bias=True), nn.ReLU(True),
+                nn.Linear(16, 2, bias=True), nn.ReLU(True)
+            )
+            optimizer = optim.Adamax(model.parameters(), lr=0.001)
+            while True:
+                model.train()
+                y_pred = model(xs)
+                loss = nn.functional.mse_loss(y_pred, ys)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                if loss < 1e-5:
+                    break
+
+            self.dyn_model = model
+            print("end training")
+            return action, True
 
     # Function to add a transition to the buffer
     def add_transition(self, state, action, next_state):
-        pass
+        self.inputs.append(torch.cat((torch.Tensor(state), torch.Tensor(action)), 0))
+        self.outputs.append(torch.Tensor(next_state))
 
+    def dynamics_train(self, environment: environment.Environment):
+        n_episodes, episode_l = 100, 5
+        for ep in range(n_episodes):
+            environment.reset()
+            for i in range(episode_l):
+                state = np.copy(environment.state)
+                action = np.random.uniform(-constants.MAX_ACTION_MAGNITUDE, constants.MAX_ACTION_MAGNITUDE, size=2)
+                environment.step(action)
+                self.add_transition(state, action, environment.state)
+        
 
 # The VisualisationLine class enables us to store a line segment which will be drawn to the screen
 class VisualisationLine:
