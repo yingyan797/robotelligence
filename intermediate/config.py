@@ -12,12 +12,14 @@ WINDOW_SIZE = 600
 FRAME_RATE = 10
 
 # You may want to add your own configuration variables here, depending on the algorithm you implement.
+TRAIN_ITER = 1000
+EXPLORE_MODE = "read"
 RAND_EPL = 5
 RAND_NEPS = 100
-TRAIN_INTV = 10
+TRAIN_INTV = 5
 CEM_ITER = 10
 N_PATHS = 20
 PATH_L = 30
 K_ELITE = 5
-N_BATCHES = 10
-BATCH_SIZE = 128
+N_BATCHES = 100
+BATCH_SIZE = 32
