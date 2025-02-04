@@ -51,6 +51,7 @@ class Robot:
     # Function to get the next action in the plan
     def select_action(self, current_state):
         # For now, a random action
+        # print(len(self.sequence), self.n_episodes)
         if self.sequence:
             return self.sequence.pop(0), len(self.sequence) == 0
         
@@ -85,6 +86,7 @@ class Robot:
                 return self.dyn_model(torch.cat((state, action)))
 
         if self.n_episodes == config.RAND_NEPS:
+            # Create dynamic network after random explore
             if config.EXPLORE_MODE == "write":
                 print(f"Random explore saved as file: {len(self.replay_buffer)} transitions")
                 with open("intermediate/explore.json", 'w') as f:
@@ -95,19 +97,28 @@ class Robot:
             ys = torch.stack([entry[1] for entry in self.replay_buffer], 0)
             self.dyn_model = nn.Sequential(
                 nn.Linear(4, 32, bias=True), nn.ReLU(True),
-                nn.Linear(32, 32, bias=True), nn.ReLU(True),
-                nn.Linear(32, 16, bias=True), nn.ReLU(True),
+                nn.Linear(32, 128, bias=True), nn.ReLU(True),
+                nn.Linear(128, 64, bias=True), nn.ReLU(True),
+                nn.Linear(64, 16, bias=True), nn.ReLU(True),
                 nn.Linear(16, 2, bias=True)
             )
-            self.optimizer = optim.Adamax(self.dyn_model.parameters(), lr=0.001)
+            self.optimizer = optim.Adamax(self.dyn_model.parameters(), lr=5e-3)
             n_iter = 1
+            all_loss = []
             while n_iter < config.TRAIN_ITER:
-                train_model(xs, ys)
+                l = train_model(xs, ys)
+                if l < 1e-5:
+                    break
+                all_loss.append(l)
                 n_iter += 1
+            print(f"Training end at loss {all_loss[-1]}")
+            plt.title("MSE loss over iterations (initial)")
+            plt.plot(range(len(all_loss)), all_loss)
+            plt.savefig("intermediate/init_loss.png")
 
             print(f"end training in {n_iter} epochs")
         elif (self.n_episodes - config.RAND_NEPS) % config.TRAIN_INTV == 0:
-            print("Retrain model")
+            # print("Retrain model")
             import random
             for _ in range(config.N_BATCHES):
                 entries = random.sample(self.replay_buffer, k=config.BATCH_SIZE)
