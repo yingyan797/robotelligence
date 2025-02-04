@@ -43,6 +43,7 @@ class Robot:
         self.eps_count = 0
         self.n_episodes += 1
         self.planning_visualisation_lines = []
+        self.model_visualisation_lines = []
 
     # Give the robot access to the goal state
     def set_goal_state(self, goal_state):
@@ -52,9 +53,6 @@ class Robot:
     def select_action(self, current_state):
         # For now, a random action
         # print(len(self.sequence), self.n_episodes)
-        if self.sequence:
-            return self.sequence.pop(0), len(self.sequence) == 0
-        
         if self.n_episodes < config.RAND_NEPS:
             if config.EXPLORE_MODE == "write":
                 action = np.random.uniform(low=-constants.MAX_ACTION_MAGNITUDE, high=constants.MAX_ACTION_MAGNITUDE, size=2)
@@ -84,48 +82,6 @@ class Robot:
             with torch.no_grad():
                 # Forward pass
                 return self.dyn_model(torch.cat((state, action)))
-
-        if self.n_episodes == config.RAND_NEPS:
-            # Create dynamic network after random explore
-            if config.EXPLORE_MODE == "write":
-                print(f"Random explore saved as file: {len(self.replay_buffer)} transitions")
-                with open("intermediate/explore.json", 'w') as f:
-                    json.dump([(x.numpy().tolist(), y.numpy().tolist()) for x,y in self.replay_buffer], f)
-
-            print("start training on random explore")
-            xs = torch.stack([entry[0] for entry in self.replay_buffer], 0)
-            ys = torch.stack([entry[1] for entry in self.replay_buffer], 0)
-            self.dyn_model = nn.Sequential(
-                nn.Linear(4, 32, bias=True), nn.ReLU(True),
-                nn.Linear(32, 128, bias=True), nn.ReLU(True),
-                nn.Linear(128, 64, bias=True), nn.ReLU(True),
-                nn.Linear(64, 16, bias=True), nn.ReLU(True),
-                nn.Linear(16, 2, bias=True)
-            )
-            self.optimizer = optim.Adamax(self.dyn_model.parameters(), lr=5e-3)
-            n_iter = 1
-            all_loss = []
-            while n_iter < config.TRAIN_ITER:
-                l = train_model(xs, ys)
-                if l < 1e-5:
-                    break
-                all_loss.append(l)
-                n_iter += 1
-            print(f"Training end at loss {all_loss[-1]}")
-            plt.title("MSE loss over iterations (initial)")
-            plt.plot(range(len(all_loss)), all_loss)
-            plt.savefig("intermediate/init_loss.png")
-
-            print(f"end training in {n_iter} epochs")
-        elif (self.n_episodes - config.RAND_NEPS) % config.TRAIN_INTV == 0:
-            # print("Retrain model")
-            import random
-            for _ in range(config.N_BATCHES):
-                entries = random.sample(self.replay_buffer, k=config.BATCH_SIZE)
-                xs = torch.stack([entry[0] for entry in entries], 0)
-                ys = torch.stack([entry[1] for entry in entries], 0)
-                train_model(xs, ys)
-
         def eucl_reward(state):
             joint_pos = self.forward_kinematics(state)
             hand_pos = joint_pos[2]
@@ -149,21 +105,72 @@ class Robot:
         if eucl_reward(current_state) > -0.01:
             return np.zeros(2), True
         
-        from torch.distributions import Normal
-        act_mean, act_std = torch.zeros(size=(config.PATH_L, 2)), torch.ones(size=(config.PATH_L, 2))
-        for i in range(config.CEM_ITER):
-            policy = Normal(act_mean, act_std)
-            all_actions = policy.sample(sample_shape=(config.N_PATHS,))
-            all_rewards = torch.Tensor([term_reward(seq) for seq in all_actions])
-            top_indices = all_rewards.topk(config.K_ELITE).indices
-            elite = all_actions.index_select(0, top_indices)
-            act_mean = elite.mean(0)
-            act_std = elite.std(0)
-            color_step = i/config.CEM_ITER
-            iterpath_visual(act_mean, (50+150*color_step, 50, 255-120*color_step))
-        
-        self.sequence = [act.numpy() for act in act_mean]  
-        return self.sequence.pop(0), len(self.sequence) == 0
+        def cem_plan():
+            from torch.distributions import Normal
+            act_mean, act_std = torch.zeros(size=(config.PATH_L, 2)), torch.ones(size=(config.PATH_L, 2))
+            for i in range(config.CEM_ITER):
+                policy = Normal(act_mean, act_std)
+                all_actions = policy.sample(sample_shape=(config.N_PATHS,))
+                all_rewards = torch.Tensor([term_reward(seq) for seq in all_actions])
+                top_indices = all_rewards.topk(config.K_ELITE).indices
+                elite = all_actions.index_select(0, top_indices)
+                act_mean = elite.mean(0)
+                act_std = elite.std(0)
+                color_step = i/config.CEM_ITER
+                iterpath_visual(act_mean, (50+150*color_step, 50, 255-120*color_step))
+            self.sequence = [act.numpy() for act in act_mean]
+
+        action_i = self.eps_count
+        if self.eps_count == 0:
+            if self.n_episodes == config.RAND_NEPS:
+                # Create dynamic network after random explore
+                if config.EXPLORE_MODE == "write":
+                    print(f"Random explore saved as file: {len(self.replay_buffer)} transitions")
+                    with open("intermediate/explore.json", 'w') as f:
+                        json.dump([(x.numpy().tolist(), y.numpy().tolist()) for x,y in self.replay_buffer], f)
+
+                print("start training on random explore")
+                xs = torch.stack([entry[0] for entry in self.replay_buffer], 0)
+                ys = torch.stack([entry[1] for entry in self.replay_buffer], 0)
+                self.dyn_model = nn.Sequential(
+                    nn.Linear(4, 32, bias=True), nn.ReLU(True),
+                    nn.Linear(32, 128, bias=True), nn.ReLU(True),
+                    nn.Linear(128, 64, bias=True), nn.ReLU(True),
+                    nn.Linear(64, 16, bias=True), nn.ReLU(True),
+                    nn.Linear(16, 2, bias=True)
+                )
+                self.optimizer = optim.Adamax(self.dyn_model.parameters(), lr=5e-3)
+                n_iter = 1
+                all_loss = []
+                while n_iter < config.TRAIN_ITER:
+                    l = train_model(xs, ys)
+                    if l < 1e-5:
+                        break
+                    all_loss.append(l)
+                    n_iter += 1
+                print(f"Training end at loss {all_loss[-1]}")
+                # plt.title("MSE loss over iterations (initial)")
+                # plt.plot(range(len(all_loss)), all_loss)
+                # plt.savefig("intermediate/init_loss.png")
+
+                print(f"end training in {n_iter} epochs")
+            elif (self.n_episodes - config.RAND_NEPS) % config.TRAIN_INTV == 0:
+                # print("Retrain model")
+                import random
+                for _ in range(config.N_BATCHES):
+                    entries = random.sample(self.replay_buffer, k=config.BATCH_SIZE)
+                    xs = torch.stack([entry[0] for entry in entries], 0)
+                    ys = torch.stack([entry[1] for entry in entries], 0)
+                    train_model(xs, ys)
+
+            cem_plan()
+        elif config.LOOP_MODE == "closed":
+            self.planning_visualisation_lines = []
+            cem_plan()
+            action_i = 0
+            
+        self.eps_count += 1
+        return self.sequence[action_i], self.eps_count == config.PATH_L
 
     # Function to add a transition to the buffer
     def add_transition(self, state, action, next_state):

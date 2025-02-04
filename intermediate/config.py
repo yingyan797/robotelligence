@@ -14,12 +14,13 @@ FRAME_RATE = 10
 # You may want to add your own configuration variables here, depending on the algorithm you implement.
 TRAIN_ITER = 400
 EXPLORE_MODE = "read"
+LOOP_MODE = "closed"
 RAND_EPL = 5
 RAND_NEPS = 100
 TRAIN_INTV = 1
 CEM_ITER = 10
-N_PATHS = 20
+N_PATHS = 15
 PATH_L = 30
 K_ELITE = 3
-N_BATCHES = 1000
+N_BATCHES = 500
 BATCH_SIZE = 256
