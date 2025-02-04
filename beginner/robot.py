@@ -22,7 +22,8 @@ class Robot:
 
     # Reset the robot at the start of an episode
     def reset(self):
-        pass
+        self.sequence = []
+        self.visualisation_lines = []
 
     # Give the robot access to the environment's dynamics
     def give_environment_access(self, environment):
@@ -47,28 +48,41 @@ class Robot:
         if eucl_reward(current_state) > -0.01:
             return np.zeros(2), True
         
-        def path_reward(actions):
+        def term_reward(actions):
             state = current_state
-            tot_reward = 0
             for action in actions:
                 state = self.environment.dynamics(state, action.numpy())
-                tot_reward += eucl_reward(state)
-            return tot_reward
+            return eucl_reward(state)     
+               
+        def iterpath_visual(actions, color):
+            state = current_state
+            hand_pos = self.environment.get_joint_pos_from_state(state)[2]
+            for act in actions:
+                state = self.environment.dynamics(state, act.numpy())
+                next_pos = self.environment.get_joint_pos_from_state(state)[2]
+                self.visualisation_lines.append(VisualisationLine(hand_pos[0], hand_pos[1], next_pos[0], next_pos[1], color, 3e-3))
+                hand_pos = next_pos
         
-        n_iter, n_paths, path_l, k_elite = 10, 20, 10, 5
-        act_mean, act_std = torch.zeros(2), torch.ones(2)
-        for _ in range(n_iter):
-            policy = Normal(act_mean, act_std)
-            all_actions = policy.sample(sample_shape=(n_paths, path_l))
-            all_rewards = torch.Tensor([path_reward(seq) for seq in all_actions])
-            top_indices = all_rewards.topk(k_elite).indices
-            elite = all_actions.index_select(0, top_indices)
-            act_mean = elite.mean((0,1))
-            act_std = elite.std((0,1))
-        
-        action = Normal(act_mean, act_std).sample((1,))[0].numpy()
-        return action, False
+        if not self.sequence:
+            act_mean, act_std = torch.zeros(size=(config.PATH_L, 2)), torch.ones(size=(config.PATH_L, 2))
+            for i in range(config.N_ITER):
+                policy = Normal(act_mean, act_std)
+                all_actions = policy.sample(sample_shape=(config.N_PATHS,))
+                all_rewards = torch.Tensor([term_reward(seq) for seq in all_actions])
+                top_indices = all_rewards.topk(config.K_ELITE).indices
+                elite = all_actions.index_select(0, top_indices)
+                act_mean = elite.mean(0)
+                act_std = elite.std(0)
+                color_step = i/config.N_ITER
+                iterpath_visual(act_mean, (50+150*color_step, 50, 255-120*color_step))
+            
+            self.sequence = [act.numpy() for act in act_mean]
 
+    
+        if len(self.sequence) > 1:
+            return self.sequence.pop(0), False
+        action =  self.sequence.pop()
+        return action, True
 
 # The VisualisationLine class enables us to store a line segment which will be drawn to the screen
 class VisualisationLine:

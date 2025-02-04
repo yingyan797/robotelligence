@@ -12,3 +12,7 @@ WINDOW_SIZE = 800
 FRAME_RATE = 10
 
 # You may want to add your own configuration variables here, depending on the algorithm you implement.
+N_ITER = 10
+N_PATHS = 20
+PATH_L = 35
+K_ELITE = 3

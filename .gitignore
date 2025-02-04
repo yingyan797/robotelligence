@@ -2,3 +2,4 @@
 *.tex
 *.docx
 experiment.py
+tutorial*/
