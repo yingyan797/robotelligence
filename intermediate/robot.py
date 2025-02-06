@@ -107,15 +107,16 @@ class Robot:
         
         def cem_plan():
             from torch.distributions import Normal
-            act_mean, act_std = torch.zeros(size=(config.PATH_L, 2)), torch.ones(size=(config.PATH_L, 2))
+            std = constants.MAX_ACTION_MAGNITUDE/2
+            act_mean, act_std = torch.zeros(size=(config.PATH_L, 2)), torch.tensor([[std, std] for _ in range(config.PATH_L)])
             for i in range(config.CEM_ITER):
                 policy = Normal(act_mean, act_std)
-                all_actions = policy.sample(sample_shape=(config.N_PATHS,))
+                all_actions = policy.sample(sample_shape=(config.N_PATHS,)).clamp(-constants.MAX_ACTION_MAGNITUDE, constants.MAX_ACTION_MAGNITUDE)
                 all_rewards = torch.Tensor([term_reward(seq) for seq in all_actions])
                 top_indices = all_rewards.topk(config.K_ELITE).indices
                 elite = all_actions.index_select(0, top_indices)
                 act_mean = elite.mean(0)
-                act_std = elite.std(0)
+                act_std = torch.maximum(elite.std(0), torch.tensor(1e-3))
                 color_step = i/config.CEM_ITER
                 iterpath_visual(act_mean, (50+150*color_step, 50, 255-120*color_step))
             self.sequence = [act.numpy() for act in act_mean]

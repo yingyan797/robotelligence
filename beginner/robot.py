@@ -67,7 +67,7 @@ class Robot:
             act_mean, act_std = torch.zeros(size=(config.PATH_L, 2)), torch.ones(size=(config.PATH_L, 2))
             for i in range(config.N_ITER):
                 policy = Normal(act_mean, act_std)
-                all_actions = policy.sample(sample_shape=(config.N_PATHS,))
+                all_actions = policy.sample(sample_shape=(config.N_PATHS,)).clamp(-constants.MAX_ACTION_MAGNITUDE, constants.MAX_ACTION_MAGNITUDE)
                 all_rewards = torch.Tensor([term_reward(seq) for seq in all_actions])
                 top_indices = all_rewards.topk(config.K_ELITE).indices
                 elite = all_actions.index_select(0, top_indices)
