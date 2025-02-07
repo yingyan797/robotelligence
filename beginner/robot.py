@@ -72,7 +72,7 @@ class Robot:
                 top_indices = all_rewards.topk(config.K_ELITE).indices
                 elite = all_actions.index_select(0, top_indices)
                 act_mean = elite.mean(0)
-                act_std = elite.std(0)
+                act_std = torch.maximum(elite.std(0), torch.tensor(1e-3))
                 color_step = i/config.N_ITER
                 iterpath_visual(act_mean, (50+150*color_step, 50, 255-120*color_step))
             

@@ -12,3 +12,7 @@ WINDOW_SIZE = 600
 FRAME_RATE = 10
 
 # You may want to add your own configuration variables here, depending on the algorithm you implement.
+RAND_L = 5
+N_DEMOS = 3
+N_BATCHES = 1024
+BATCH_SIZE = 256

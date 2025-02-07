@@ -7,7 +7,7 @@
 import numpy as np
 
 # Imports from this project
-import constants
+import constants, config
 
 
 # The Demonstrator class is the "human" which provides the demonstrations to the robot
@@ -31,8 +31,11 @@ class Demonstrator:
         path_distances = np.zeros([constants.CEM_NUM_ITER, constants.CEM_NUM_PATHS], dtype=np.float32)
         action_mean = np.zeros([constants.CEM_NUM_ITER, constants.CEM_PATH_LENGTH, 2], dtype=np.float32)
         action_std = np.zeros([constants.CEM_NUM_ITER, constants.CEM_PATH_LENGTH, 2], dtype=np.float32)
-        # Set the current state
+        # Random initialize the current state
         state = self.init_state
+        for i in range(config.RAND_L):
+            action = np.random.uniform(low=-constants.MAX_ACTION_MAGNITUDE, high=constants.MAX_ACTION_MAGNITUDE, size=2)
+            state, collision = self.dynamics(state, action)
         # Loop over the CEM iterations
         for iter_num in range(constants.CEM_NUM_ITER):
             # Loop over all the paths that will be sampled
